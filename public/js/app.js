@@ -947,8 +947,34 @@ document.addEventListener(
   true,
 );
 
+function renderBootError(html) {
+  appEl.innerHTML = `<div class="boot-error glass" style="padding:2rem;margin:1rem 0">${html}</div>`;
+}
+
+async function ensureBackend() {
+  const origin = window.TOKENSYNC_API_ORIGIN || location.origin;
+  try {
+    const res = await fetch(`${origin}/api/health`, { signal: AbortSignal.timeout(5000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 window.addEventListener('hashchange', () => void router());
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
+  if (!(await ensureBackend())) {
+    renderBootError(`
+      <h2 style="margin:0 0 1rem;color:#f87171">Backend nicht erreichbar</h2>
+      <p style="color:#94a3b8;line-height:1.6">TokenSync braucht den Node-Server auf Port <strong>3001</strong>.</p>
+      <ol style="color:#cbd5e1;line-height:1.8;margin:1rem 0 0 1.2rem">
+        <li>Terminal: <code style="background:#1e293b;padding:2px 6px;border-radius:4px">npm run dev</code></li>
+        <li>Browser: <a href="http://localhost:3001" style="color:#22d3ee">http://localhost:3001</a></li>
+      </ol>
+      <p style="margin-top:1rem;font-size:0.85rem;color:#64748b">Repo: <a href="https://github.com/devbadya/Exit-Liquidity" style="color:#22d3ee">github.com/devbadya/Exit-Liquidity</a></p>
+      <p style="margin-top:0.5rem;font-size:0.8rem;color:#64748b">Nicht <code>index.html</code> direkt öffnen und nicht Live Server — nur <code>npm run dev</code>.</p>`);
+    return;
+  }
   void router();
   startPolling();
 });

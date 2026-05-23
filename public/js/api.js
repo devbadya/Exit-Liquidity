@@ -1,5 +1,5 @@
 /** TokenSync — API-Aufrufe */
-const API = '/api';
+const API = `${window.TOKENSYNC_API_ORIGIN || ''}/api`;
 
 async function fetchNews(params) {
   const q = new URLSearchParams();

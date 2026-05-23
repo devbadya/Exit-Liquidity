@@ -7,6 +7,8 @@
     "dev": "npm run dev --prefix server",
     "start": "npm run start --prefix server",
     "setup": "npm install && npm install --prefix server",
+    "open": "open http://localhost:3001",
+    "go": "npm run dev",
     "audit": "npm audit --prefix server"
   },
   "devDependencies": {

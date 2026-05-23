@@ -1,0 +1,13 @@
+{
+  "name": "tokensync",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix server",
+    "start": "npm run start --prefix server",
+    "audit": "npm audit --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

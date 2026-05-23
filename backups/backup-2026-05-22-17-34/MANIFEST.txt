@@ -1,0 +1,5 @@
+Task: Initial TokenSync implementation (Phase 0-2 MVP)
+Date: 2026-05-22T17:34:59+02:00
+Contents: client/, server/, docs, root package.json
+Notes: Crypto news aggregator (8 RSS feeds, 60s cron), Fear & Greed hub (Alternative.me + CoinGecko), professional React UI
+Security: npm audit 0 vulnerabilities both packages; helmet, rate limit, sanitize-html, CORS restricted

@@ -1,0 +1,36 @@
+/** TokenSync — API-Aufrufe */
+const API = '/api';
+
+async function fetchNews(params) {
+  const q = new URLSearchParams();
+  if (params?.source) q.set('source', params.source);
+  if (params?.category) q.set('category', params.category);
+  const res = await fetch(`${API}/news?${q}`);
+  if (!res.ok) throw new Error('News konnten nicht geladen werden');
+  return res.json();
+}
+
+async function fetchFearGreed() {
+  const res = await fetch(`${API}/fear-greed`);
+  if (!res.ok) throw new Error('Fear & Greed konnte nicht geladen werden');
+  return res.json();
+}
+
+async function fetchMarkets() {
+  const res = await fetch(`${API}/markets`);
+  if (!res.ok) throw new Error('Marktdaten konnten nicht geladen werden');
+  return res.json();
+}
+
+async function fetchCmcCoins(params) {
+  const q = new URLSearchParams();
+  q.set('page', String(params?.page ?? 1));
+  q.set('limit', String(params?.limit ?? 50));
+  if (params?.search) q.set('search', params.search);
+  const res = await fetch(`${API}/cmc/coins?${q}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'CoinMarketCap-Daten konnten nicht geladen werden');
+  }
+  return res.json();
+}

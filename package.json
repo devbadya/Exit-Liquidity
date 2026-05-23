@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "postinstall": "npm install --prefix server",
     "dev": "npm run dev --prefix server",
     "start": "npm run start --prefix server",
+    "setup": "npm install && npm install --prefix server",
     "audit": "npm audit --prefix server"
   },
   "devDependencies": {

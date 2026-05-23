@@ -10,6 +10,21 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/styles.css" />
   <title>TokenSync — Crypto Intelligence</title>
+  <script>
+    if (location.protocol === 'file:') {
+      document.addEventListener('DOMContentLoaded', function () {
+        var app = document.getElementById('app');
+        if (app) {
+          app.innerHTML =
+            '<div class="error-msg" style="padding:2rem;max-width:32rem">' +
+            '<strong>Bitte über den Dev-Server öffnen</strong><p style="margin-top:0.75rem;color:#94a3b8">' +
+            'CSS und API funktionieren nicht bei <code>file://</code>. Im Projektordner: <code>npm run dev</code>, dann ' +
+            '<a href="http://localhost:3001" style="color:#22d3ee">http://localhost:3001</a></p>' +
+            '<p style="margin-top:0.75rem"><a href="https://github.com/devbadya/Exit-Liquidity" style="color:#22d3ee">github.com/devbadya/Exit-Liquidity</a> klonen → <code>npm run setup && npm run dev</code></p></div>';
+        }
+      });
+    }
+  </script>
 </head>
 <body class="grid-bg">
   <div class="bg-glow" aria-hidden="true"></div>
@@ -30,6 +45,7 @@
         <a href="#/news" data-route="/news">News</a>
         <a href="#/fear-greed" data-route="/fear-greed">F&amp;G</a>
         <a href="#/paper" data-route="/paper">Trade</a>
+        <a href="https://github.com/devbadya/Exit-Liquidity" class="nav-github" target="_blank" rel="noopener noreferrer">GitHub</a>
       </nav>
       <span class="live-badge"><span class="live-dot"></span> Live</span>
     </div>

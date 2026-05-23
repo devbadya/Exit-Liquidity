@@ -19,7 +19,7 @@ import type { MarketOverviewResponse } from './types/market.js';
 import type { CmcCoin } from './types/cmc.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC_DIR = path.join(__dirname, '../../public');
+const PUBLIC_DIR = path.resolve(__dirname, '../../public');
 
 const PORT = Number(process.env.PORT) || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3001';

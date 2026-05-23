@@ -88,10 +88,10 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
-        styleSrc: ["'self'", 'https://fonts.googleapis.com'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
         imgSrc: ["'self'", 'https:', 'data:', 'https://s2.coinmarketcap.com'],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", 'http://localhost:3001', 'http://127.0.0.1:3001'],
       },
     },
   }),

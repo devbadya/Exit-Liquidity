@@ -70,3 +70,22 @@ function formatPctOrDash(v) {
   if (v == null || Number.isNaN(v)) return '—';
   return formatPct(v);
 }
+
+/** Safari / ältere Browser: kein AbortSignal.timeout */
+function fetchWithTimeout(url, ms) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return fetch(url, { signal: AbortSignal.timeout(ms) });
+  }
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal }).then(
+    (res) => {
+      clearTimeout(t);
+      return res;
+    },
+    (err) => {
+      clearTimeout(t);
+      throw err;
+    },
+  );
+}

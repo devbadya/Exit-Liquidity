@@ -1,35 +1,37 @@
-import { Bitcoin, TrendingUp, TrendingDown, Globe } from 'lucide-react';
+import { TrendingDown, TrendingUp } from 'lucide-react';
 import type { MarketContext } from '../types';
 import { formatPct, formatUsd } from '../lib/format';
 
-interface Props {
-  market: MarketContext;
-}
+interface Props { market: MarketContext; }
 
 export function MarketStrip({ market }: Props) {
   const items = [
-    { label: 'Bitcoin', value: formatUsd(market.btcPrice), change: market.btcChange24h, icon: Bitcoin },
-    { label: 'Ethereum', value: formatUsd(market.ethPrice), change: market.ethChange24h, icon: TrendingUp },
-    { label: 'Market Cap', value: formatUsd(market.totalMarketCap, true), change: market.marketCapChange24h, icon: Globe },
-    { label: 'BTC Dominance', value: `${market.btcDominance.toFixed(1)}%`, change: null, icon: TrendingDown },
+    { label: 'Bitcoin',       value: formatUsd(market.btcPrice),             change: market.btcChange24h,       sym: 'BTC' },
+    { label: 'Ethereum',      value: formatUsd(market.ethPrice),             change: market.ethChange24h,       sym: 'ETH' },
+    { label: 'Market Cap',    value: formatUsd(market.totalMarketCap, true), change: market.marketCapChange24h, sym: 'MKT' },
+    { label: 'BTC Dominanz',  value: `${market.btcDominance.toFixed(1)}%`,  change: null,                      sym: 'DOM' },
   ];
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      {items.map(({ label, value, change, icon: Icon }) => (
-        <div key={label} className="glass rounded-xl p-4">
-          <div className="flex items-center gap-2 text-slate-500 text-xs mb-2">
-            <Icon className="w-3.5 h-3.5" />
-            {label}
+      {items.map(({ label, value, change, sym }) => {
+        const up = change !== null && change >= 0;
+        return (
+          <div key={label} className="stat-card">
+            <div className="flex items-center justify-between mb-3">
+              <span className="t-label">{sym}</span>
+              {change !== null && (
+                <span className={`flex items-center gap-1 text-[11px] num font-semibold ${up ? 'up' : 'dn'}`}>
+                  {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                  {formatPct(change)}
+                </span>
+              )}
+            </div>
+            <p className="num font-bold text-[var(--t0)] text-lg truncate">{value}</p>
+            <p className="text-xs text-[var(--t1)] mt-0.5">{label}</p>
           </div>
-          <p className="text-lg font-semibold text-white tabular-nums">{value}</p>
-          {change !== null && (
-            <p className={`text-xs mt-1 tabular-nums ${change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {formatPct(change)} (24h)
-            </p>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

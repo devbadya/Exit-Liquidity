@@ -1,40 +1,18 @@
-/** Assets & API-Origin — funktioniert auch bei file:// / Live Server */
+/** API-Origin & Redirect auf Port 3001 — Skripte nicht nachträglich umschreiben (bricht Safari). */
 (function () {
-  var DEV = 'http://localhost:3001';
+  var host = location.hostname;
+  var DEV =
+    host === '127.0.0.1' ? 'http://127.0.0.1:3001' : 'http://localhost:3001';
 
-  function apiOrigin() {
-    if (location.protocol === 'file:') return DEV;
-    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-      if (!location.port || location.port !== '3001') return DEV;
+  if (location.protocol !== 'file:') {
+    if ((host === 'localhost' || host === '127.0.0.1') && location.port !== '3001') {
+      location.replace(DEV + location.pathname + location.search + location.hash);
+      return;
     }
-    return location.origin;
-  }
-
-  var ORIGIN = apiOrigin();
-  window.TOKENSYNC_API_ORIGIN = ORIGIN;
-
-  function assetUrl(path) {
-    return ORIGIN + (path.startsWith('/') ? path : '/' + path);
-  }
-
-  function fixAssets() {
-    var css = document.getElementById('main-css') || document.querySelector('link[rel="stylesheet"]');
-    if (css) css.href = assetUrl('/css/styles.css') + '?v=' + Date.now();
-
-    document.querySelectorAll('script[src]').forEach(function (s) {
-      var src = s.getAttribute('src');
-      if (!src || src.startsWith('http')) return;
-      s.src = assetUrl(src);
-    });
-
-    var icon = document.querySelector('link[rel="icon"]');
-    if (icon) icon.href = assetUrl('/favicon.svg');
-  }
-
-  fixAssets();
-  if (location.protocol === 'file:') {
+    window.TOKENSYNC_API_ORIGIN = location.origin;
+  } else {
+    window.TOKENSYNC_API_ORIGIN = DEV;
     document.addEventListener('DOMContentLoaded', function () {
-      fixAssets();
       var app = document.getElementById('app');
       if (app) {
         app.innerHTML =

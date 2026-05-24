@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import NodeCache from 'node-cache';
 import cron from 'node-cron';
 import path from 'path';
+import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { aggregateNews } from './services/newsAggregator.js';
 import { fetchFearGreedData } from './services/fearGreedService.js';
@@ -19,7 +20,9 @@ import type { MarketOverviewResponse } from './types/market.js';
 import type { CmcCoin } from './types/cmc.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC_DIR = path.resolve(__dirname, '../../public');
+const CLIENT_DIST = path.resolve(__dirname, '../../client/dist');
+const PUBLIC_DIR  = path.resolve(__dirname, '../../public');
+const STATIC_DIR  = existsSync(path.join(CLIENT_DIST, 'index.html')) ? CLIENT_DIST : PUBLIC_DIR;
 
 const PORT = Number(process.env.PORT) || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3001';
@@ -82,23 +85,47 @@ async function refreshMarkets(): Promise<void> {
   }
 }
 
+const isProd = process.env.NODE_ENV === 'production';
+
+// Build allowed origins list — includes any value set via CLIENT_ORIGIN
+const allowedOrigins = [
+  CLIENT_ORIGIN,
+  'http://127.0.0.1:3001',
+  'http://localhost:3001',
+  ...(isProd ? [] : []),
+].filter(Boolean);
+
 app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-        imgSrc: ["'self'", 'https:', 'data:', 'https://s2.coinmarketcap.com'],
-        connectSrc: ["'self'", 'http://localhost:3001', 'http://127.0.0.1:3001'],
+        defaultSrc:  ["'self'"],
+        scriptSrc:   ["'self'", "'unsafe-inline'"],
+        styleSrc:    ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc:     ["'self'", 'https://fonts.gstatic.com', 'data:'],
+        imgSrc:      ["'self'", 'https:', 'data:', 'https://s2.coinmarketcap.com', 'https://images.unsplash.com'],
+        connectSrc:  [
+          "'self'",
+          ...allowedOrigins,
+          ...(isProd ? [] : ['ws://localhost:3001', 'ws://127.0.0.1:3001']),
+        ],
       },
     },
   }),
 );
 app.use(
   cors({
-    origin: [CLIENT_ORIGIN, 'http://127.0.0.1:3001', 'http://localhost:3001'],
+    origin(origin, cb) {
+      if (!origin) return cb(null, true); // server-to-server / curl
+      if (
+        allowedOrigins.includes(origin) ||
+        /^https:\/\/.*\.railway\.app$/.test(origin) ||
+        /^https:\/\/.*\.up\.railway\.app$/.test(origin)
+      ) {
+        return cb(null, true);
+      }
+      cb(new Error('CORS: origin not allowed'));
+    },
     methods: ['GET'],
   }),
 );
@@ -369,14 +396,26 @@ app.get('/api/fear-greed/history', (req, res) => {
   });
 });
 
-app.use(express.static(PUBLIC_DIR));
+app.use(express.static(STATIC_DIR, {
+  etag: true,
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  },
+}));
 
 app.use((req, res, next) => {
   if (req.method !== 'GET' || req.path.startsWith('/api')) {
     next();
     return;
   }
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.sendFile(path.join(STATIC_DIR, 'index.html'));
 });
 
 cron.schedule('* * * * *', () => void refreshNews());

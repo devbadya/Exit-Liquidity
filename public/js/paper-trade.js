@@ -1,7 +1,7 @@
 /** TokenSync — Paper Trading Engine v2 (Perps-Simulation) */
 
 const PAPER_STORAGE_KEY = 'tokensync_paper_v2';
-const PAPER_START_BALANCE = 10_000;
+const PAPER_START_BALANCE = 10000;
 const PAPER_FEE_RATE = 0.0005;
 const PAPER_MAX_LEVERAGE = 50;
 const PAPER_LEVERAGES = [1, 2, 3, 5, 10, 20, 50];

@@ -4,6 +4,22 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="TokenSync — Crypto News & Fear and Greed Index" />
+  <script>
+    (function () {
+      var host = location.hostname;
+      var port = location.port;
+      var dev = host === '127.0.0.1' ? 'http://127.0.0.1:3001' : 'http://localhost:3001';
+      if (location.protocol === 'file:') {
+        window.TOKENSYNC_API_ORIGIN = dev;
+        return;
+      }
+      if ((host === 'localhost' || host === '127.0.0.1') && port !== '3001') {
+        location.replace(dev + location.pathname + location.search + location.hash);
+        return;
+      }
+      window.TOKENSYNC_API_ORIGIN = location.origin;
+    })();
+  </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,8 +30,7 @@
     .container{max-width:80rem;margin:0 auto;padding:0 1rem} .nav-pills a{color:#94a3b8;text-decoration:none;margin-right:0.5rem}
     .site-footer{margin-top:auto;padding:2rem 0;border-top:1px solid #1e293b;color:#64748b;font-size:0.85rem}
   </style>
-  <script src="/js/boot.js"></script>
-  <link rel="stylesheet" id="main-css" href="/css/styles.css" />
+  <link rel="stylesheet" id="main-css" href="css/styles.css" />
   <title>TokenSync — Crypto Intelligence</title>
 </head>
 <body class="grid-bg">
@@ -68,15 +83,48 @@
     <p class="copyright">© <span id="year"></span> TokenSync</p>
   </footer>
 
-  <script src="/js/utils.js"></script>
-  <script src="/js/api.js"></script>
-  <script src="/js/components.js"></script>
-  <script src="/js/market-ui.js"></script>
-  <script src="/js/cmc-ui.js"></script>
-  <script src="/js/chart-ui.js"></script>
-  <script src="/js/interactive-chart.js"></script>
-  <script src="/js/paper-trade.js"></script>
-  <script src="/js/paper-ui.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="js/boot.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/components.js"></script>
+  <script src="js/market-ui.js"></script>
+  <script src="js/cmc-ui.js"></script>
+  <script src="js/chart-ui.js"></script>
+  <script src="js/interactive-chart.js"></script>
+  <script src="js/paper-trade.js"></script>
+  <script src="js/paper-ui.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    window.addEventListener(
+      'error',
+      function (e) {
+        if (!e.target || e.target.tagName !== 'SCRIPT') return;
+        var app = document.getElementById('app');
+        if (!app || !document.getElementById('loading')) return;
+        app.innerHTML =
+          '<div style="padding:2rem;max-width:40rem;color:#e2e8f0;line-height:1.6">' +
+          '<h2 style="color:#f87171;margin:0 0 1rem">JavaScript konnte nicht geladen werden</h2>' +
+          '<p>Skript: <code style="background:#1e293b;padding:2px 6px;border-radius:4px">' +
+          (e.target.src || 'unbekannt') +
+          '</code></p>' +
+          '<p>TokenSync braucht den Dev-Server:</p>' +
+          '<pre style="background:#1e293b;padding:1rem;border-radius:8px">npm run dev</pre>' +
+          '<p style="margin-top:1rem"><a href="http://127.0.0.1:3001" style="color:#22d3ee;font-weight:600">http://127.0.0.1:3001</a> im Browser öffnen (Safari/Chrome — nicht nur „localhost“ ohne Port).</p></div>';
+      },
+      true,
+    );
+    setTimeout(function () {
+      if (window.TOKENSYNC_READY || !document.getElementById('loading')) return;
+      var app = document.getElementById('app');
+      if (!app) return;
+      app.innerHTML =
+        '<div style="padding:2rem;max-width:40rem;color:#e2e8f0;line-height:1.6">' +
+        '<h2 style="color:#f87171;margin:0 0 1rem">App startet nicht</h2>' +
+        '<ol style="color:#cbd5e1;margin:0 0 1rem 1.2rem">' +
+        '<li>Terminal: <code style="background:#1e293b;padding:2px 6px;border-radius:4px">npm run dev</code></li>' +
+        '<li>Diese URL öffnen: <a href="http://127.0.0.1:3001" style="color:#22d3ee;font-weight:600">http://127.0.0.1:3001</a></li>' +
+        '<li>Nicht <code>index.html</code> direkt und nicht Live Server</li></ol></div>';
+    }, 8000);
+  </script>
 </body>
 </html>

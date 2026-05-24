@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="de" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -7,11 +7,54 @@
     <meta name="description" content="TokenSync — Crypto News & Fear and Greed Index in Echtzeit" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+    <!-- Non-blocking font load -->
+    <link rel="preload" as="style"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap" />
+    </noscript>
     <title>TokenSync — Crypto Intelligence</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown only until React mounts -->
+      <div id="ts-boot" style="
+        min-height:100vh; display:flex; flex-direction:column;
+        background:#0a0e17; font-family:system-ui,sans-serif; color:#e2e8f0;">
+        <header style="
+          height:64px; display:flex; align-items:center; gap:12px; padding:0 24px;
+          border-bottom:1px solid rgba(148,163,184,.12);
+          background:rgba(10,14,23,.9); backdrop-filter:blur(12px);">
+          <div style="
+            width:36px;height:36px;border-radius:8px;
+            background:linear-gradient(135deg,rgba(34,211,238,.2),rgba(167,139,250,.2));
+            border:1px solid rgba(34,211,238,.3);
+            display:flex;align-items:center;justify-content:center;">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
+              stroke="#22d3ee" stroke-width="2" stroke-linecap="round">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+            </svg>
+          </div>
+          <span style="font-size:18px;font-weight:600;letter-spacing:-.3px">TokenSync</span>
+          <span style="
+            margin-left:auto;width:8px;height:8px;border-radius:50%;
+            background:#34d399;animation:ts-pulse 2s ease-in-out infinite;"></span>
+        </header>
+        <main style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:40px 24px">
+          <div style="
+            width:48px;height:48px;border-radius:50%;
+            border:3px solid rgba(34,211,238,.2);
+            border-top-color:#22d3ee;
+            animation:ts-spin 0.8s linear infinite;"></div>
+          <p style="color:#64748b;font-size:14px;margin:0">Lade TokenSync…</p>
+        </main>
+        <style>
+          @keyframes ts-spin  { to { transform: rotate(360deg); } }
+          @keyframes ts-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+        </style>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

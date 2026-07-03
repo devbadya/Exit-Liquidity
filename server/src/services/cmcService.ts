@@ -1,4 +1,5 @@
 import type { CmcCoin } from '../types/cmc.js';
+import { HttpError, withRetry } from '../lib/http.js';
 
 const CMC_BASE = 'https://pro-api.coinmarketcap.com';
 const BATCH = 200;
@@ -31,7 +32,7 @@ function getApiKey(): string {
   return key;
 }
 
-async function fetchListingsPage(start: number): Promise<CmcListingRow[]> {
+async function fetchListingsPageOnce(start: number): Promise<CmcListingRow[]> {
   const url = `${CMC_BASE}/v1/cryptocurrency/listings/latest?start=${start}&limit=${BATCH}&convert=USD&sort=market_cap&sort_dir=desc`;
   const res = await fetch(url, {
     headers: {
@@ -41,14 +42,18 @@ async function fetchListingsPage(start: number): Promise<CmcListingRow[]> {
     signal: AbortSignal.timeout(25000),
   });
 
-  if (res.status === 429) throw new Error('CoinMarketCap Rate Limit — bitte später erneut versuchen');
+  if (res.status === 429) throw new HttpError('CoinMarketCap Rate Limit — bitte später erneut versuchen', 429);
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`CoinMarketCap ${res.status}: ${body.slice(0, 120)}`);
+    throw new HttpError(`CoinMarketCap ${res.status}: ${body.slice(0, 120)}`, res.status);
   }
 
   const json = (await res.json()) as { data: CmcListingRow[] };
   return json.data ?? [];
+}
+
+async function fetchListingsPage(start: number): Promise<CmcListingRow[]> {
+  return withRetry(() => fetchListingsPageOnce(start), { attempts: 2, baseDelayMs: 1000 });
 }
 
 function cmcLogoUrl(id: number): string {

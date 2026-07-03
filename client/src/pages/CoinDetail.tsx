@@ -28,12 +28,13 @@ export function CoinDetail() {
   const [live,   setLive]     = useState<LivePriceResponse | null>(null);
   const [chart,  setChart]    = useState<CoinChartResponse | null>(null);
   const [range,  setRange]    = useState<Range>('24h');
-  const [loading, setLoading] = useState(true);
+  // Abgeleiteter Ladezustand: lädt, solange die Daten nicht zum aktuellen Slug gehören
+  const [loadedSlug, setLoadedSlug] = useState<string | null>(null);
+  const loading = Boolean(slug) && loadedSlug !== slug;
   const liveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!slug) return;
-    setLoading(true);
     void Promise.allSettled([
       fetchCoinDetail(slug),
       fetchCoinLive(slug),
@@ -42,7 +43,7 @@ export function CoinDetail() {
       if (d.status === 'fulfilled') setDetail(d.value);
       if (l.status === 'fulfilled') setLive(l.value);
       if (c.status === 'fulfilled') setChart(c.value);
-      setLoading(false);
+      setLoadedSlug(slug);
     });
   }, [slug]);
 

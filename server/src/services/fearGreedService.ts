@@ -1,7 +1,9 @@
 import type { FearGreedResponse, FearGreedSnapshot, MarketContext } from '../types/index.js';
 import { coingeckoFetch } from './coingeckoClient.js';
+import { HttpError, withRetry } from '../lib/http.js';
 
 const ALT_URL = 'https://api.alternative.me/fng/?limit=90';
+const CMC_FNG_URL = 'https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical?limit=90';
 const CG_URL = 'https://api.coingecko.com/api/v3/global';
 const CG_PRICE =
   'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true';
@@ -14,7 +16,7 @@ function classify(value: number): string {
   return 'Extreme Greed';
 }
 
-function buildComponents(value: number, market: MarketContext): Record<string, number> {
+export function buildComponents(value: number, market: MarketContext): Record<string, number> {
   const momentum = Math.min(100, Math.max(0, 50 + market.btcChange24h * 3));
   const volatility = Math.min(100, Math.max(0, 100 - Math.abs(market.btcChange24h) * 4));
   const dominance = Math.min(100, Math.max(0, market.btcDominance));
@@ -30,18 +32,71 @@ function buildComponents(value: number, market: MarketContext): Record<string, n
   };
 }
 
-async function fetchAlternativeMe(): Promise<FearGreedSnapshot[]> {
-  const res = await fetch(ALT_URL, { signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw new Error('F&G API failed');
-  const json = (await res.json()) as {
-    data: { value: string; value_classification: string; timestamp: string }[];
+/**
+ * Notfall-Index, wenn beide F&G-APIs ausfallen: aus Marktdaten abgeleitet
+ * (Momentum, Volatilität, Market-Cap-Trend) — als 'composite' gekennzeichnet.
+ */
+export function deriveCompositeSnapshot(market: MarketContext): FearGreedSnapshot {
+  const momentum = Math.min(100, Math.max(0, 50 + market.btcChange24h * 3));
+  const volatility = Math.min(100, Math.max(0, 100 - Math.abs(market.btcChange24h) * 4));
+  const capTrend = Math.min(100, Math.max(0, 50 + market.marketCapChange24h * 2));
+  const value = Math.round(momentum * 0.5 + volatility * 0.2 + capTrend * 0.3);
+  return {
+    timestamp: new Date().toISOString(),
+    value,
+    classification: classify(value),
+    source: 'composite',
   };
-  return json.data.map((d) => ({
-    timestamp: new Date(Number(d.timestamp) * 1000).toISOString(),
-    value: Number(d.value),
-    classification: d.value_classification,
-    source: 'alternative.me' as const,
-  }));
+}
+
+async function fetchAlternativeMe(): Promise<FearGreedSnapshot[]> {
+  return withRetry(async () => {
+    const res = await fetch(ALT_URL, { signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new HttpError(`Alternative.me ${res.status}`, res.status);
+    const json = (await res.json()) as {
+      data: { value: string; value_classification: string; timestamp: string }[];
+    };
+    if (!json.data?.length) throw new Error('Alternative.me: leere Antwort');
+    return json.data.map((d) => ({
+      timestamp: new Date(Number(d.timestamp) * 1000).toISOString(),
+      value: Number(d.value),
+      classification: d.value_classification,
+      source: 'alternative.me' as const,
+    }));
+  }, { attempts: 2, baseDelayMs: 800 });
+}
+
+function parseCmcTimestamp(ts: string | number): string {
+  if (typeof ts === 'number' || /^\d+$/.test(String(ts))) {
+    return new Date(Number(ts) * 1000).toISOString();
+  }
+  const parsed = new Date(ts);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+}
+
+/** Fallback: CoinMarketCap Fear & Greed (gleicher CMC_API_KEY wie die Coin-Liste) */
+async function fetchCmcFearGreed(): Promise<FearGreedSnapshot[]> {
+  const key = process.env.CMC_API_KEY;
+  if (!key) throw new Error('CMC_API_KEY fehlt — kein CMC F&G Fallback möglich');
+  return withRetry(async () => {
+    const res = await fetch(CMC_FNG_URL, {
+      headers: { 'X-CMC_PRO_API_KEY': key, Accept: 'application/json' },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) throw new HttpError(`CMC F&G ${res.status}`, res.status);
+    const json = (await res.json()) as {
+      data: { timestamp: string | number; value: number; value_classification?: string }[];
+    };
+    if (!json.data?.length) throw new Error('CMC F&G: leere Antwort');
+    return json.data
+      .map((d) => ({
+        timestamp: parseCmcTimestamp(d.timestamp),
+        value: Number(d.value),
+        classification: d.value_classification ?? classify(Number(d.value)),
+        source: 'coinmarketcap' as const,
+      }))
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, { attempts: 2, baseDelayMs: 800 });
 }
 
 const emptyMarket = (): MarketContext => ({
@@ -85,8 +140,27 @@ async function fetchMarket(): Promise<MarketContext> {
   }
 }
 
+async function fetchHistoryWithFallback(market: MarketContext): Promise<FearGreedSnapshot[]> {
+  try {
+    return await fetchAlternativeMe();
+  } catch (err) {
+    console.warn('Alternative.me nicht erreichbar, versuche CMC:', err instanceof Error ? err.message : err);
+  }
+  try {
+    return await fetchCmcFearGreed();
+  } catch (err) {
+    console.warn('CMC F&G nicht erreichbar:', err instanceof Error ? err.message : err);
+  }
+  // Letzte Rettung: aus Marktdaten ableiten (nur aktueller Wert, keine Historie)
+  if (market.totalMarketCap > 0) {
+    return [deriveCompositeSnapshot(market)];
+  }
+  throw new Error('Fear & Greed: alle Quellen nicht erreichbar');
+}
+
 export async function fetchFearGreedData(): Promise<FearGreedResponse> {
-  const [history, market] = await Promise.all([fetchAlternativeMe(), fetchMarket()]);
+  const market = await fetchMarket();
+  const history = await fetchHistoryWithFallback(market);
   const current = history[0];
   const yesterday = history[1] ?? null;
   const components = buildComponents(current.value, market);

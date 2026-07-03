@@ -51,11 +51,11 @@ function extractImage(item: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
-function normalizeTitle(title: string): string {
+export function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-function titleSimilarity(a: string, b: string): number {
+export function titleSimilarity(a: string, b: string): number {
   const wa = new Set(normalizeTitle(a).split(' '));
   const wb = new Set(normalizeTitle(b).split(' '));
   if (wa.size === 0 || wb.size === 0) return 0;
@@ -64,7 +64,7 @@ function titleSimilarity(a: string, b: string): number {
   return inter / Math.max(wa.size, wb.size);
 }
 
-function categorize(title: string, summary: string, base: string[]): string[] {
+export function categorize(title: string, summary: string, base: string[]): string[] {
   const text = `${title} ${summary}`.toLowerCase();
   const cats = new Set(base);
   if (/bitcoin|btc/.test(text)) cats.add('bitcoin');
@@ -75,7 +75,7 @@ function categorize(title: string, summary: string, base: string[]): string[] {
   return [...cats];
 }
 
-function inferSentiment(title: string, summary: string): 'bullish' | 'bearish' | 'neutral' {
+export function inferSentiment(title: string, summary: string): 'bullish' | 'bearish' | 'neutral' {
   const text = `${title} ${summary}`.toLowerCase();
   const bull = /surge|rally|record high|approval|adoption|bull|gain|soar|breakout/.test(text);
   const bear = /crash|hack|ban|fraud|bear|drop|plunge|collapse|lawsuit|sec charge/.test(text);
@@ -97,7 +97,7 @@ async function fetchFeed(config: FeedConfig): Promise<NewsArticle[]> {
         id: hashId(url),
         title,
         summary: summary || title.slice(0, 200),
-        imageUrl: extractImage(item as Record<string, unknown>),
+        imageUrl: extractImage(item as unknown as Record<string, unknown>),
         source: config.source,
         sourceId: config.sourceId,
         url,
@@ -112,7 +112,7 @@ async function fetchFeed(config: FeedConfig): Promise<NewsArticle[]> {
   }
 }
 
-function deduplicate(articles: NewsArticle[]): NewsArticle[] {
+export function deduplicate(articles: NewsArticle[]): NewsArticle[] {
   const seen = new Map<string, NewsArticle>();
   const sorted = [...articles].sort(
     (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),

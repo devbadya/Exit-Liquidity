@@ -33,7 +33,22 @@ COINGECKO_API_KEY=CG-dein_coingecko_key
 | `CMC_API_KEY` | CoinMarketCap | Alle Coins (`#/coins`) |
 | `COINGECKO_API_KEY` | CoinGecko | Markets, Charts, F&G |
 
-Status: `GET http://localhost:3001/api/status`
+Status: `GET http://localhost:3001/api/status` · Health: `GET http://localhost:3001/api/health`
+
+## Ausfallsicherheit
+
+Fällt eine API aus, springt automatisch eine andere Quelle ein:
+
+| Daten | Primär | Fallback |
+|-------|--------|----------|
+| Fear & Greed | Alternative.me | CoinMarketCap F&G → eigener Composite aus Marktdaten |
+| Alle Coins | CoinMarketCap | CoinGecko (gleiche Datenform) |
+| Markets | CoinGecko | Aufbereitung aus gecachten CMC-Daten |
+
+Zusätzlich: Die letzten guten Daten bleiben im Cache (statt 503) und werden
+als Snapshot unter `server/.cache/` gespeichert — nach einem Neustart sind
+sofort Daten da. `GET /api/health` zeigt pro Datensatz Quelle, Alter und
+letzten Fehler.
 
 ## Features
 

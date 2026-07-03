@@ -12,9 +12,12 @@ import { aggregateNews } from './services/newsAggregator.js';
 import { fetchFearGreedData } from './services/fearGreedService.js';
 import { fetchMarketOverview } from './services/marketService.js';
 import { fetchAllCmcCoins, fetchCmcLiveSnapshot, filterAndPaginateCoins } from './services/cmcService.js';
+import { fetchCoinsFromCoinGecko } from './services/coinsFallbackService.js';
+import { buildMarketOverviewFromCmc } from './services/marketFallbackService.js';
 import { fetchCoinChart, VALID_CHART_RANGES, type ChartRange } from './services/coinChartService.js';
 import { fetchLivePrice } from './services/livePriceService.js';
 import { fetchBinanceLivePrice } from './services/binancePriceService.js';
+import { loadSnapshot, saveSnapshot } from './lib/snapshotStore.js';
 import type { FearGreedResponse, NewsResponse } from './types/index.js';
 import type { MarketOverviewResponse } from './types/market.js';
 import type { CmcCoin } from './types/cmc.js';
@@ -23,17 +26,64 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIST = path.resolve(__dirname, '../../client/dist');
 const PUBLIC_DIR  = path.resolve(__dirname, '../../public');
 const STATIC_DIR  = existsSync(path.join(CLIENT_DIST, 'index.html')) ? CLIENT_DIST : PUBLIC_DIR;
+// Das Legacy-Frontend (public/) nutzt Inline-Scripts — nur dann CSP lockern
+const LEGACY_STATIC = STATIC_DIR === PUBLIC_DIR;
 
 const PORT = Number(process.env.PORT) || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3001';
 
 const app = express();
-const cache = new NodeCache();
+// TTL 0 = Daten verfallen nie: Wenn ein Refresh fehlschlägt, servieren wir
+// die letzten guten Daten (stale) statt 503. Cron ersetzt sie bei Erfolg.
+const cache = new NodeCache({ stdTTL: 0, useClones: false });
 
 const newsCacheKey = 'news';
 const fgCacheKey = 'fearGreed';
 const marketCacheKey = 'markets';
 const cmcCacheKey = 'cmcCoins';
+
+interface DatasetHealth {
+  lastSuccess: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  source: string | null;
+}
+
+const datasetHealth: Record<string, DatasetHealth> = {
+  [newsCacheKey]: { lastSuccess: null, lastError: null, lastErrorAt: null, source: null },
+  [fgCacheKey]: { lastSuccess: null, lastError: null, lastErrorAt: null, source: null },
+  [marketCacheKey]: { lastSuccess: null, lastError: null, lastErrorAt: null, source: null },
+  [cmcCacheKey]: { lastSuccess: null, lastError: null, lastErrorAt: null, source: null },
+};
+
+function recordSuccess(key: string, source: string): void {
+  datasetHealth[key].lastSuccess = new Date().toISOString();
+  datasetHealth[key].source = source;
+}
+
+function recordFailure(key: string, err: unknown): void {
+  datasetHealth[key].lastError = err instanceof Error ? err.message : String(err);
+  datasetHealth[key].lastErrorAt = new Date().toISOString();
+}
+
+function storeDataset<T>(key: string, data: T, source: string): void {
+  cache.set(key, data);
+  saveSnapshot(key, data);
+  recordSuccess(key, source);
+}
+
+/** Warm-Start: letzte gute Daten von Disk laden, damit nach Neustart kein 503 kommt */
+function loadPersistedSnapshots(): void {
+  for (const key of [newsCacheKey, fgCacheKey, marketCacheKey, cmcCacheKey]) {
+    const snap = loadSnapshot<unknown>(key);
+    if (snap) {
+      cache.set(key, snap.data);
+      datasetHealth[key].lastSuccess = snap.savedAt;
+      datasetHealth[key].source = 'disk-snapshot';
+      console.log(`Snapshot geladen: ${key} (Stand ${snap.savedAt})`);
+    }
+  }
+}
 
 let newsRefreshing = false;
 let fgRefreshing = false;
@@ -45,14 +95,16 @@ async function refreshNews(): Promise<void> {
   newsRefreshing = true;
   try {
     const data = await aggregateNews();
+    if (!data.articles.length) throw new Error('Keine Artikel von den RSS-Quellen erhalten');
     const payload: NewsResponse = {
       articles: data.articles,
       lastUpdated: new Date().toISOString(),
       sourcesActive: data.sourcesActive,
       totalFetched: data.totalFetched,
     };
-    cache.set(newsCacheKey, payload, 120);
+    storeDataset(newsCacheKey, payload, 'rss');
   } catch (err) {
+    recordFailure(newsCacheKey, err);
     console.warn('News refresh failed:', err instanceof Error ? err.message : err);
   } finally {
     newsRefreshing = false;
@@ -63,9 +115,11 @@ async function refreshFearGreed(): Promise<void> {
   if (fgRefreshing) return;
   fgRefreshing = true;
   try {
+    // fetchFearGreedData hat intern die Kette alternative.me → CMC → Composite
     const data = await fetchFearGreedData();
-    cache.set(fgCacheKey, data, 600);
+    storeDataset(fgCacheKey, data, data.current.source);
   } catch (err) {
+    recordFailure(fgCacheKey, err);
     console.warn('Fear & Greed refresh failed:', err instanceof Error ? err.message : err);
   } finally {
     fgRefreshing = false;
@@ -77,11 +131,48 @@ async function refreshMarkets(): Promise<void> {
   marketRefreshing = true;
   try {
     const data = await fetchMarketOverview();
-    cache.set(marketCacheKey, data, 300);
+    storeDataset(marketCacheKey, data, 'coingecko');
   } catch (err) {
-    console.warn('Markets refresh failed:', err instanceof Error ? err.message : err);
+    recordFailure(marketCacheKey, err);
+    console.warn('Markets refresh (CoinGecko) failed:', err instanceof Error ? err.message : err);
+    // Fallback: Überblick aus den gecachten CMC-Coins bauen
+    const cmcCoins = cache.get<CmcCoin[]>(cmcCacheKey);
+    if (cmcCoins?.length) {
+      try {
+        const fallback = buildMarketOverviewFromCmc(cmcCoins);
+        storeDataset(marketCacheKey, fallback, 'coinmarketcap-fallback');
+        console.log('Markets: Fallback aus CMC-Daten aktiv');
+      } catch (fbErr) {
+        console.warn('Markets CMC fallback failed:', fbErr instanceof Error ? fbErr.message : fbErr);
+      }
+    }
   } finally {
     marketRefreshing = false;
+  }
+}
+
+async function refreshCmc(): Promise<void> {
+  if (cmcRefreshing) return;
+  cmcRefreshing = true;
+  try {
+    const coins = await fetchAllCmcCoins();
+    if (!coins.length) throw new Error('CoinMarketCap lieferte keine Coins');
+    storeDataset(cmcCacheKey, coins, 'coinmarketcap');
+  } catch (err) {
+    recordFailure(cmcCacheKey, err);
+    console.warn('CMC refresh failed:', err instanceof Error ? err.message : err);
+    // Fallback: gleiche Datenform aus CoinGecko
+    try {
+      const coins = await fetchCoinsFromCoinGecko(500);
+      if (coins.length) {
+        storeDataset(cmcCacheKey, coins, 'coingecko-fallback');
+        console.log(`Coins: Fallback über CoinGecko aktiv (${coins.length} Coins)`);
+      }
+    } catch (fbErr) {
+      console.warn('Coins CoinGecko fallback failed:', fbErr instanceof Error ? fbErr.message : fbErr);
+    }
+  } finally {
+    cmcRefreshing = false;
   }
 }
 
@@ -92,7 +183,6 @@ const allowedOrigins = [
   CLIENT_ORIGIN,
   'http://127.0.0.1:3001',
   'http://localhost:3001',
-  ...(isProd ? [] : []),
 ].filter(Boolean);
 
 app.use(
@@ -100,10 +190,10 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc:  ["'self'"],
-        scriptSrc:   ["'self'", "'unsafe-inline'"],
+        scriptSrc:   LEGACY_STATIC ? ["'self'", "'unsafe-inline'"] : ["'self'"],
         styleSrc:    ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         fontSrc:     ["'self'", 'https://fonts.gstatic.com', 'data:'],
-        imgSrc:      ["'self'", 'https:', 'data:', 'https://s2.coinmarketcap.com', 'https://images.unsplash.com'],
+        imgSrc:      ["'self'", 'https:', 'data:'],
         connectSrc:  [
           "'self'",
           ...allowedOrigins,
@@ -129,7 +219,10 @@ app.use(
     methods: ['GET'],
   }),
 );
+// Nur API-Routen limitieren — statische Assets (JS/CSS/Bilder) zählen sonst mit
+// und ein normaler Seitenaufruf kann das Limit sprengen
 app.use(
+  '/api',
   rateLimit({
     windowMs: 60_000,
     max: 120,
@@ -138,8 +231,36 @@ app.use(
   }),
 );
 
+function datasetReport(key: string) {
+  const health = datasetHealth[key];
+  const hasData = cache.get(key) !== undefined;
+  const ageSeconds = health.lastSuccess
+    ? Math.round((Date.now() - new Date(health.lastSuccess).getTime()) / 1000)
+    : null;
+  return {
+    available: hasData,
+    source: health.source,
+    lastSuccess: health.lastSuccess,
+    ageSeconds,
+    lastError: health.lastError,
+    lastErrorAt: health.lastErrorAt,
+  };
+}
+
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const datasets = {
+    news: datasetReport(newsCacheKey),
+    fearGreed: datasetReport(fgCacheKey),
+    markets: datasetReport(marketCacheKey),
+    coins: datasetReport(cmcCacheKey),
+  };
+  const allAvailable = Object.values(datasets).every((d) => d.available);
+  const anyAvailable = Object.values(datasets).some((d) => d.available);
+  res.json({
+    status: allAvailable ? 'ok' : anyAvailable ? 'degraded' : 'starting',
+    datasets,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 app.get('/api/status', (_req, res) => {
@@ -160,6 +281,12 @@ app.get('/api/status', (_req, res) => {
       uniswap: { configured: true, note: 'Uniswap v2/v3 via DexScreener (Ethereum)' },
       hyperliquid: { configured: true, note: 'Öffentliche Mid-Preise (Perp)' },
       rssNews: { configured: true, endpoint: '/api/news' },
+    },
+    datasets: {
+      news: datasetReport(newsCacheKey),
+      fearGreed: datasetReport(fgCacheKey),
+      markets: datasetReport(marketCacheKey),
+      coins: datasetReport(cmcCacheKey),
     },
     timestamp: new Date().toISOString(),
   });
@@ -191,19 +318,6 @@ app.get('/api/fear-greed', (_req, res) => {
   res.json(cached);
 });
 
-async function refreshCmc(): Promise<void> {
-  if (cmcRefreshing) return;
-  cmcRefreshing = true;
-  try {
-    const coins = await fetchAllCmcCoins();
-    cache.set(cmcCacheKey, coins, 900);
-  } catch (err) {
-    console.warn('CMC refresh failed:', err instanceof Error ? err.message : err);
-  } finally {
-    cmcRefreshing = false;
-  }
-}
-
 app.get('/api/cmc/summary', (_req, res) => {
   const cached = cache.get<CmcCoin[]>(cmcCacheKey);
   if (!cached?.length) {
@@ -223,7 +337,7 @@ app.get('/api/cmc/summary', (_req, res) => {
     btcPrice: btc?.price ?? 0,
     btcChange24h: btc?.change24h ?? 0,
     coinCount: cached.length,
-    source: 'CoinMarketCap',
+    source: datasetHealth[cmcCacheKey].source === 'coingecko-fallback' ? 'CoinGecko (Fallback)' : 'CoinMarketCap',
     lastUpdated: cached[0]?.lastUpdated ?? new Date().toISOString(),
   });
 });
@@ -314,7 +428,7 @@ app.get('/api/cmc/list', (_req, res) => {
     coins: cached,
     total: cached.length,
     lastUpdated: cached[0]?.lastUpdated ?? new Date().toISOString(),
-    source: 'CoinMarketCap',
+    source: datasetHealth[cmcCacheKey].source === 'coingecko-fallback' ? 'CoinGecko (Fallback)' : 'CoinMarketCap',
   });
 });
 
@@ -342,11 +456,22 @@ app.get('/api/cmc/live', async (req, res) => {
       cache.set(
         cmcCacheKey,
         main.map((c) => (byId.has(c.id) ? { ...c, ...byId.get(c.id)! } : c)),
-        900,
       );
     }
     res.json(payload);
   } catch (err) {
+    // Fallback: letzte bekannte Liste ausliefern statt Fehler
+    const main = cache.get<CmcCoin[]>(cmcCacheKey);
+    if (main?.length) {
+      res.json({
+        coins: main.slice(0, limit),
+        total: Math.min(limit, main.length),
+        lastUpdated: main[0]?.lastUpdated ?? new Date().toISOString(),
+        source: 'Cache (Live-Update nicht verfügbar)',
+        refreshSeconds: 30,
+      });
+      return;
+    }
     res.status(502).json({
       error: err instanceof Error ? err.message : 'Live-Update nicht verfügbar',
     });
@@ -370,7 +495,7 @@ app.get('/api/cmc/coins', (req, res) => {
     limit,
     totalPages: Math.ceil(total / limit),
     lastUpdated: cached[0]?.lastUpdated ?? new Date().toISOString(),
-    source: 'CoinMarketCap',
+    source: datasetHealth[cmcCacheKey].source === 'coingecko-fallback' ? 'CoinGecko (Fallback)' : 'CoinMarketCap',
   });
 });
 
@@ -424,10 +549,12 @@ cron.schedule('*/10 * * * *', () => void refreshMarkets());
 cron.schedule('*/15 * * * *', () => void refreshCmc());
 
 async function bootstrap() {
+  loadPersistedSnapshots();
   app.listen(PORT, () => {
     console.log(`TokenSync → http://localhost:${PORT}`);
   });
-  void refreshCmc();
+  // CMC zuerst anstoßen, damit der Markets-Fallback notfalls Daten hat
+  await refreshCmc();
   await Promise.allSettled([refreshNews(), refreshFearGreed(), refreshMarkets()]);
 }
 

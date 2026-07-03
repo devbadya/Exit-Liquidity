@@ -24,7 +24,7 @@ export interface FearGreedSnapshot {
   timestamp: string;
   value: number;
   classification: string;
-  source: 'alternative.me' | 'composite';
+  source: 'alternative.me' | 'coinmarketcap' | 'composite';
 }
 
 export interface FearGreedHistory {

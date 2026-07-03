@@ -49,19 +49,22 @@ function mapCoin(c: CGMarket): CoinRow {
   };
 }
 
-function isStable(coin: CoinRow): boolean {
+export function isStable(coin: CoinRow): boolean {
   return STABLE_SYMBOLS.has(coin.symbol.toLowerCase()) || coin.name.toLowerCase().includes('stable');
 }
 
-function calcAltcoinSeason(coins: CoinRow[]): AltcoinSeasonData {
+export function calcAltcoinSeason(
+  coins: CoinRow[],
+  field: 'change90d' | 'change30d' = 'change90d',
+): AltcoinSeasonData {
   const btc = coins.find((c) => c.symbol === 'BTC');
-  const btc90 = btc?.change90d ?? 0;
+  const btcChange = btc?.[field] ?? 0;
 
   const alts = coins
-    .filter((c) => c.symbol !== 'BTC' && c.symbol !== 'ETH' && !isStable(c) && c.change90d !== null)
+    .filter((c) => c.symbol !== 'BTC' && c.symbol !== 'ETH' && !isStable(c) && c[field] !== null)
     .slice(0, 50);
 
-  const outperforming = alts.filter((c) => (c.change90d ?? 0) > btc90).length;
+  const outperforming = alts.filter((c) => (c[field] ?? 0) > btcChange).length;
   const sampleSize = alts.length || 1;
   const index = Math.round((outperforming / Math.min(50, sampleSize)) * 100);
 
@@ -69,18 +72,18 @@ function calcAltcoinSeason(coins: CoinRow[]): AltcoinSeasonData {
   if (index >= 75) classification = 'Altcoin Season';
   else if (index <= 25) classification = 'Bitcoin Season';
 
+  const horizon = field === 'change90d' ? '90-Tage' : '30-Tage';
   return {
     index,
     classification,
     outperformingCount: outperforming,
     sampleSize: Math.min(50, sampleSize),
-    btcChange90d: btc90,
-    description:
-      'Misst, wie viele der Top-Altcoins Bitcoin auf 90-Tage-Sicht outperformen (CMC/Blockchaincenter-Methodik).',
+    btcChange90d: btcChange,
+    description: `Misst, wie viele der Top-Altcoins Bitcoin auf ${horizon}-Sicht outperformen (CMC/Blockchaincenter-Methodik).`,
   };
 }
 
-function calcAverageCrypto(coins: CoinRow[]): AverageCryptoIndex {
+export function calcAverageCrypto(coins: CoinRow[]): AverageCryptoIndex {
   const top = coins.filter((c) => !isStable(c)).slice(0, 50);
   const totalCap = top.reduce((s, c) => s + c.marketCap, 0) || 1;
 
